@@ -1,0 +1,8 @@
+# Doku bleibt lokal und wird nicht veröffentlicht
+CLAUDE.md
+LogbookApp Vault/
+.claude/
+
+# Exporte aus der App
+*.csv
+logbuch-backup_*.json
