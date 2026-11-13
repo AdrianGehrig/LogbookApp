@@ -108,7 +108,7 @@
   function questionHtml(q, value) {
     let input;
     if (q.type === 'text') {
-      input = `<textarea rows="2" placeholder="…">${esc(value || '')}</textarea>`;
+      input = `<textarea rows="2" placeholder="${esc(q.hint || '…')}" aria-label="${esc(q.title)}">${esc(value || '')}</textarea>`;
     } else {
       const selected = Array.isArray(value) ? value : (value ? [value] : []);
       input = `<div class="chips">${q.options.map(o =>
@@ -118,7 +118,7 @@
     return `
       <section class="card q-card" data-question="${q.id}" data-type="${q.type}">
         <h2>${esc(q.title)}</h2>
-        ${q.hint ? `<p class="hint">${esc(q.hint)}</p>` : ''}
+        ${q.hint && q.type !== 'text' ? `<p class="hint">${esc(q.hint)}</p>` : ''}
         ${input}
       </section>`;
   }
@@ -197,7 +197,7 @@
         setTimeout(Celebrate.dismiss, 80);
       } else {
         toast('Gespeichert');
-        go('#/history/' + lb.id);
+        go(`#/history/${lb.id}/${date}`);
       }
     } catch (err) {
       console.error(err);
@@ -224,38 +224,121 @@
 
   // ---------- Verlauf ----------
 
-  function historyView(id) {
+  const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+  function getHistoryMode() {
+    try { return localStorage.getItem('historyMode') === 'calendar' ? 'calendar' : 'list'; } catch (e) { return 'list'; }
+  }
+
+  function entryCard(lb, e) {
+    const rows = lb.questions.filter(q => hasAnswer(e.answers[q.id])).map(q => {
+      const v = e.answers[q.id];
+      return `<dt>${esc(q.title)}</dt><dd>${esc(Array.isArray(v) ? v.join(', ') : v)}</dd>`;
+    }).join('');
+    return `
+      <article class="card entry">
+        <header>
+          <strong>${esc(fmtFull(e.date))}</strong>
+          <span>
+            <a href="#/log/${lb.id}/${e.date}">Bearbeiten</a>
+            <button class="link danger" data-action="delete-entry" data-id="${esc(e.id)}">Löschen</button>
+          </span>
+        </header>
+        <dl>${rows || '<dd class="hint">Keine Antworten zu den aktuellen Fragen.</dd>'}</dl>
+      </article>`;
+  }
+
+  function historyView(id, param) {
     const lb = logbook(id);
     if (!lb) return null;
+    const mode = getHistoryMode();
     const entries = entriesOf(id).sort((a, b) => b.date.localeCompare(a.date));
-    const items = entries.map(e => {
-      const rows = lb.questions.filter(q => hasAnswer(e.answers[q.id])).map(q => {
-        const v = e.answers[q.id];
-        return `<dt>${esc(q.title)}</dt><dd>${esc(Array.isArray(v) ? v.join(', ') : v)}</dd>`;
-      }).join('');
-      return `
-        <article class="card entry">
-          <header>
-            <strong>${esc(fmtFull(e.date))}</strong>
-            <span>
-              <a href="#/log/${lb.id}/${e.date}">Bearbeiten</a>
-              <button class="link danger" data-action="delete-entry" data-id="${esc(e.id)}">Löschen</button>
-            </span>
-          </header>
-          <dl>${rows || '<dd class="hint">Keine Antworten zu den aktuellen Fragen.</dd>'}</dl>
-        </article>`;
-    }).join('');
+    const toggle = `
+      <div class="seg" role="tablist" aria-label="Ansicht">
+        <button role="tab" data-action="history-mode" data-mode="list" aria-selected="${mode === 'list'}">Liste</button>
+        <button role="tab" data-action="history-mode" data-mode="calendar" aria-selected="${mode === 'calendar'}">Kalender</button>
+      </div>`;
+
+    let body;
+    if (mode === 'calendar') {
+      body = calendarHtml(lb, param);
+    } else {
+      body = `
+        <div class="card row">
+          <label class="grow">Tag nachtragen
+            <input type="date" id="backfill" max="${isoDate()}" value="${addDays(isoDate(), -1)}">
+          </label>
+          <button class="btn ghost" data-action="backfill" data-id="${lb.id}">Öffnen</button>
+        </div>
+        ${entries.map(e => entryCard(lb, e)).join('') || '<p class="empty">Noch keine Einträge.</p>'}`;
+    }
 
     return `
       ${header('Verlauf', '#/', lb.emoji + ' ' + lb.name)}
-      <div class="card row">
-        <label class="grow">Tag nachtragen
-          <input type="date" id="backfill" max="${isoDate()}" value="${addDays(isoDate(), -1)}">
-        </label>
-        <button class="btn ghost" data-action="backfill" data-id="${lb.id}">Öffnen</button>
-      </div>
-      ${items || '<p class="empty">Noch keine Einträge.</p>'}
+      ${toggle}
+      ${body}
       ${entries.length ? `<button class="btn ghost wide" data-action="export-csv" data-id="${lb.id}">Als CSV exportieren</button>` : ''}`;
+  }
+
+  // param: 'YYYY-MM' (Monat) oder 'YYYY-MM-DD' (Monat mit ausgewähltem Tag)
+  function calendarHtml(lb, param) {
+    const today = isoDate();
+    const thisMonth = today.slice(0, 7);
+    const selected = isDate(param) && param <= today ? param : null;
+    let month = selected ? selected.slice(0, 7) : (/^\d{4}-\d{2}$/.test(param || '') ? param : thisMonth);
+    if (month > thisMonth) month = thisMonth;
+    const first = parseDate(month + '-01');
+    const byDate = new Map(entriesOf(lb.id).map(e => [e.date, e]));
+    const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const lead = (first.getDay() + 6) % 7;   // Montag = 0
+    const shift = n => isoDate(new Date(first.getFullYear(), first.getMonth() + n, 1)).slice(0, 7);
+    const prev = shift(-1), next = shift(1);
+
+    let count = 0;
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push('<span class="cal-day blank"></span>');
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = `${month}-${pad(d)}`;
+      const has = byDate.has(date);
+      if (has) count++;
+      const cls = ['cal-day', has && 'on', date === today && 'today', date === selected && 'sel'].filter(Boolean).join(' ');
+      cells.push(date > today
+        ? `<span class="${cls} future">${d}</span>`
+        : `<a class="${cls}" href="#/history/${lb.id}/${date}" aria-label="${esc(fmtFull(date))}${has ? ', eingetragen' : ''}">${d}</a>`);
+    }
+
+    const title = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+    const pastDays = month === thisMonth ? Number(today.slice(8)) : daysInMonth;
+
+    let detail = '<p class="hint cal-help">Tippe auf einen Tag, um den Eintrag zu sehen oder nachzutragen.</p>';
+    if (selected) {
+      const e = byDate.get(selected);
+      detail = e ? entryCard(lb, e) : `
+        <section class="card">
+          <strong>${esc(fmtFull(selected))}</strong>
+          <p class="hint">Für diesen Tag gibt es noch keinen Eintrag.</p>
+          <a class="btn primary wide" href="#/log/${lb.id}/${selected}">${selected === today ? 'Jetzt ausfüllen' : 'Nachtragen'}</a>
+        </section>`;
+    }
+
+    return `
+      <section class="card cal">
+        <div class="cal-head">
+          <a class="icon cal-nav" href="#/history/${lb.id}/${prev}" aria-label="Vorheriger Monat">‹</a>
+          <div class="cal-title">
+            <strong>${esc(title)}</strong>
+            <span class="hint">${count} von ${pastDays} ${pastDays === 1 ? 'Tag' : 'Tagen'} eingetragen</span>
+          </div>
+          ${month < thisMonth
+            ? `<a class="icon cal-nav" href="#/history/${lb.id}/${next}" aria-label="Nächster Monat">›</a>`
+            : '<span class="icon cal-nav disabled" aria-hidden="true">›</span>'}
+        </div>
+        <div class="cal-grid">
+          ${WEEKDAYS.map(w => `<span class="cal-wd">${w}</span>`).join('')}
+          ${cells.join('')}
+        </div>
+      </section>
+      ${detail}`;
   }
 
   // ---------- Editor ----------
@@ -446,7 +529,7 @@
     switch (view) {
       case 'log': html = fillView(a, b || isoDate()); break;
       case 'done': html = doneView(a); break;
-      case 'history': html = historyView(a); break;
+      case 'history': html = historyView(a, b); break;
       case 'new': html = newView(); break;
       case 'edit': html = editorView(a); break;
       case 'data': html = dataView(); break;
@@ -498,6 +581,10 @@
         render();
         break;
       }
+      case 'history-mode':
+        try { localStorage.setItem('historyMode', el.dataset.mode); } catch (e) { /* nur Komfort */ }
+        render();
+        break;
       case 'export-csv': exportCsv(el.dataset.id); break;
       case 'export-json': exportJson(); break;
       case 'use-template':

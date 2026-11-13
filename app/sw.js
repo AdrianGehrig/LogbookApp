@@ -1,5 +1,5 @@
 // Bei jeder Änderung an ausgelieferten Dateien hochzählen.
-const CACHE = 'logbook-v4';
+const CACHE = 'logbook-v5';
 const FILES = [
   './',
   'index.html',
