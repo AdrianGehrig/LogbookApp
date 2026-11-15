@@ -108,7 +108,7 @@
   function questionHtml(q, value) {
     let input;
     if (q.type === 'text') {
-      input = `<textarea rows="2" placeholder="${esc(q.hint || '…')}" aria-label="${esc(q.title)}">${esc(value || '')}</textarea>`;
+      input = `<textarea rows="1" placeholder="${esc(q.hint || '…')}" aria-label="${esc(q.title)}">${esc(value || '')}</textarea>`;
     } else {
       const selected = Array.isArray(value) ? value : (value ? [value] : []);
       input = `<div class="chips">${q.options.map(o =>
@@ -410,10 +410,37 @@
           <button class="btn ghost" data-action="preview-animation">Vorschau</button>
         </div>
       </section>
+      ${reminderHtml(d)}
       ${questions}
       <button class="btn ghost wide" data-action="q-add">+ Frage hinzufügen</button>
       <button class="btn primary wide" data-action="save-logbook">Speichern</button>
       ${isNew ? '' : '<button class="btn danger-ghost wide" data-action="delete-logbook">Logbuch löschen</button>'}`;
+  }
+
+  function reminderHtml(d) {
+    const r = d.reminder = Reminders.normalize(d.reminder);
+    const perm = Reminders.permission();
+    return `
+      <section class="card reminder">
+        <label class="switch">
+          <input type="checkbox" data-r="enabled" ${r.enabled ? 'checked' : ''}>
+          <span><strong>Erinnerung</strong>${r.enabled ? ` · ${esc(Reminders.describe(r))}` : ''}</span>
+        </label>
+        ${r.enabled ? `
+          <div class="chips days" role="group" aria-label="Wochentage">
+            ${Reminders.DAY_LABELS.map((l, i) =>
+              `<button type="button" class="chip" data-action="r-day" data-day="${i + 1}" aria-pressed="${r.days.includes(i + 1)}">${l}</button>`).join('')}
+          </div>
+          <label>Uhrzeit<input type="time" data-r="time" value="${esc(r.time)}"></label>
+          <p class="hint">Übernimm die Erinnerung einmal in deinen Kalender, dann meldet er sich zur eingestellten Zeit.
+            Änderst du später Tage oder Uhrzeit, lösche den alten Termin im Kalender und übernimm ihn neu.</p>
+          <div class="row wrap">
+            <button class="btn ghost grow" data-action="r-ics">Termin-Datei<small>iPhone, Windows</small></button>
+            <button class="btn ghost grow" data-action="r-google">Google Kalender<small>Android</small></button>
+          </div>
+          ${perm === 'default' ? '<button class="link" data-action="r-notify">Zusätzlich benachrichtigen, solange die App offen ist</button>' : ''}
+          ${perm === 'granted' ? '<p class="hint">✓ Ist die App offen, meldet sie sich zusätzlich selbst.</p>' : ''}` : ''}
+      </section>`;
   }
 
   async function saveLogbook() {
@@ -423,6 +450,8 @@
     d.doneLabel = d.doneLabel.trim() || 'Erledigt';
     d.doneMessage = d.doneMessage.trim() || 'Geschafft. Bis morgen!';
     d.animation = d.animation || 'rocket';
+    d.reminder = Reminders.normalize(d.reminder);
+    if (d.reminder.enabled && !d.reminder.days.length) return toast('Wähle mindestens einen Tag für die Erinnerung.');
     if (!d.name) return toast('Gib dem Logbuch einen Namen.');
     d.questions.forEach(q => {
       q.title = q.title.trim();
@@ -608,6 +637,29 @@
         Celebrate.dismiss();
         busy = false;
         break;
+      case 'r-day': {
+        const r = editorDraft.reminder;
+        const day = Number(el.dataset.day);
+        r.days = r.days.includes(day) ? r.days.filter(x => x !== day) : r.days.concat(day).sort();
+        rerenderEditor();
+        break;
+      }
+      case 'r-ics': {
+        if (!editorDraft.reminder.days.length) return toast('Wähle mindestens einen Tag.');
+        const name = (editorDraft.name || 'Logbuch').replace(/[^\wäöüÄÖÜß-]+/g, '_');
+        download(`Erinnerung_${name}.ics`, Reminders.ics(editorDraft), 'text/calendar;charset=utf-8');
+        break;
+      }
+      case 'r-google':
+        if (!editorDraft.reminder.days.length) return toast('Wähle mindestens einen Tag.');
+        window.open(Reminders.googleUrl(editorDraft), '_blank', 'noopener');
+        break;
+      case 'r-notify': {
+        const result = await Reminders.requestPermission();
+        toast(result === 'granted' ? 'Benachrichtigungen erlaubt' : 'Benachrichtigungen nicht erlaubt');
+        rerenderEditor();
+        break;
+      }
       case 'save-logbook': await saveLogbook(); break;
       case 'delete-logbook': await deleteLogbook(); break;
     }
@@ -618,6 +670,7 @@
     if (el.tagName === 'TEXTAREA') { autoGrow(el); saveDraft(); return; }
     if (!editorDraft) return;
     const qEl = el.closest('[data-qi]');
+    if (el.dataset.r === 'time') { if (el.value) editorDraft.reminder.time = el.value; return; }
     if (el.dataset.f) editorDraft[el.dataset.f] = el.value;
     else if (qEl && el.dataset.qf && el.dataset.qf !== 'type') editorDraft.questions[qEl.dataset.qi][el.dataset.qf] = el.value;
     else if (qEl && el.dataset.oi) editorDraft.questions[qEl.dataset.qi].options[el.dataset.oi] = el.value;
@@ -626,6 +679,8 @@
   app.addEventListener('change', ev => {
     const el = ev.target;
     if (el.id === 'import' && el.files[0]) { importJson(el.files[0]); return; }
+    if (editorDraft && el.dataset.r === 'enabled') { editorDraft.reminder.enabled = el.checked; rerenderEditor(); return; }
+    if (editorDraft && el.dataset.r === 'time') { rerenderEditor(); return; }
     if (editorDraft && el.dataset.qf === 'type') {
       const q = editorDraft.questions[el.closest('[data-qi]').dataset.qi];
       q.type = el.value;
@@ -658,6 +713,7 @@
       return;
     }
     render();
+    Reminders.watch(() => state, () => isoDate());
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       if (['localhost', '127.0.0.1'].includes(location.hostname)) {

@@ -11,6 +11,7 @@ const Templates = (() => {
       doneLabel: 'Reset erledigt',
       doneMessage: 'Kopf frei. Schönen Feierabend!',
       animation: 'rocket',
+      reminder: { enabled: true, days: [1, 2, 3, 4, 5], time: '17:30' },
       questions: [
         { title: 'Wie war dein Tag?', hint: '', type: 'choice', options: ['😞 Schlecht', '😐 Mittel', '🙂 Gut', '😄 Super'] },
         { title: 'Was ist heute passiert?', hint: 'Lass den Tag in 2–3 kurzen Stichpunkten Revue passieren.', type: 'text' },
@@ -28,6 +29,7 @@ const Templates = (() => {
       doneLabel: 'Tag eingetragen',
       doneMessage: 'Eingetragen. Gut gemacht!',
       animation: 'horse',
+      reminder: { enabled: true, days: [1, 2, 3, 4, 5, 6, 7], time: '19:00' },
       questions: [
         { title: 'Was habe ich heute gegessen?', hint: 'Frühstück, Mittag, Abend, Snacks – Stichpunkte reichen.', type: 'text' },
         { title: 'Wie geht es mir heute?', hint: '', type: 'choice', options: ['😞 Schlecht', '😐 Mittel', '🙂 Gut', '😄 Sehr gut'] },
@@ -57,6 +59,7 @@ const Templates = (() => {
       doneLabel: tpl.doneLabel,
       doneMessage: tpl.doneMessage,
       animation: tpl.animation,
+      reminder: Reminders.normalize(tpl.reminder),
       questions: tpl.questions.map(q => ({
         id: uid(),
         title: q.title,

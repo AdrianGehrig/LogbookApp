@@ -1,5 +1,5 @@
 // Bei jeder Änderung an ausgelieferten Dateien hochzählen.
-const CACHE = 'logbook-v5';
+const CACHE = 'logbook-v7';
 const FILES = [
   './',
   'index.html',
@@ -7,6 +7,7 @@ const FILES = [
   'js/storage.js',
   'js/defaults.js',
   'js/animation.js',
+  'js/reminders.js',
   'js/app.js',
   'manifest.webmanifest',
   'icons/icon-180.png',
@@ -23,6 +24,18 @@ self.addEventListener('activate', event => {
     caches.keys()
       .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const open = list.find(c => c.url.startsWith(self.registration.scope));
+      if (open) return open.focus().then(c => c.navigate(url));
+      return self.clients.openWindow(url);
+    })
   );
 });
 
