@@ -19,7 +19,9 @@
   const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !isNaN(parseDate(s));
   const fmtLong = iso => parseDate(iso).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
   const fmtFull = iso => parseDate(iso).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
-  const hasAnswer = v => Array.isArray(v) ? v.length > 0 : String(v == null ? '' : v).trim() !== '';
+  const hasAnswer = v => Array.isArray(v) ? v.length > 0
+    : v && typeof v === 'object' ? !!(v.text || v.color)
+    : String(v == null ? '' : v).trim() !== '';
   const go = hash => { location.hash = hash; };
   const draftKey = (lbId, date) => `draft:${lbId}:${date}`;
 
@@ -29,6 +31,52 @@
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+  }
+
+  // ---------- Tagesfazit: 1–3 Zeichen plus Farbe, sichtbar im Kalender ----------
+
+  const COLORS = [
+    { key: 'red', name: 'Rot' }, { key: 'orange', name: 'Orange' }, { key: 'yellow', name: 'Gelb' },
+    { key: 'green', name: 'Grün' }, { key: 'teal', name: 'Türkis' }, { key: 'blue', name: 'Blau' },
+    { key: 'violet', name: 'Lila' }, { key: 'pink', name: 'Pink' }, { key: 'grey', name: 'Grau' },
+  ];
+  const MARK_MAX = 3;
+  const colorKey = c => (COLORS.some(x => x.key === c) ? c : '');
+  const colorName = c => (COLORS.find(x => x.key === c) || {}).name || '';
+  const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('de', { granularity: 'grapheme' }) : null;
+  const graphemes = s => (segmenter ? [...segmenter.segment(String(s || ''))].map(x => x.segment) : Array.from(String(s || '')));
+  const clampMark = s => graphemes(String(s || '').replace(/\s+/g, '')).slice(0, MARK_MAX).join('');
+  // Farbverlauf von schlecht nach gut, wenn aus einer Auswahlfrage ein Tagesfazit wird
+  const GRADIENTS = { 2: ['red', 'green'], 3: ['red', 'yellow', 'green'], 4: ['red', 'yellow', 'teal', 'green'], 5: ['red', 'orange', 'yellow', 'teal', 'green'] };
+  const autoColor = (i, n) => (GRADIENTS[n] || COLORS.map(c => c.key))[i % (GRADIENTS[n] ? n : COLORS.length)];
+
+  const markClass = m => {
+    const n = graphemes(m.text).length;
+    return `c-${colorKey(m.color) || 'none'}${n > 1 ? ' len-' + n : ''}`;
+  };
+  const markHtml = (m, cls = '') => `<span class="mark ${cls} ${markClass(m)}">${esc(m.text)}</span>`;
+  const summaryQ = lb => lb.questions.find(q => q.type === 'summary');
+
+  // Antwort → { text, color }. Ältere Einträge (Text einer Auswahlfrage) werden über das Zeichen zugeordnet.
+  function markOf(q, v) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      return v.text || v.color ? { text: v.text || '', color: colorKey(v.color) } : null;
+    }
+    if (typeof v !== 'string' || !v.trim()) return null;
+    const hit = (q.marks || []).find(m => m.text && v.startsWith(m.text));
+    return hit ? { text: hit.text, color: hit.color } : { text: clampMark(v.trim().split(/\s+/)[0]), color: '' };
+  }
+  const entryMark = (lb, e) => {
+    const q = e && summaryQ(lb);
+    return q ? markOf(q, e.answers[q.id]) : null;
+  };
+
+  function answerText(q, v) {
+    if (q.type === 'summary') {
+      const m = markOf(q, v);
+      return m ? [m.text, colorName(m.color)].filter(Boolean).join(' · ') : '';
+    }
+    return Array.isArray(v) ? v.join(', ') : v;
   }
 
   const logbook = id => state.logbooks.find(l => l.id === id);
@@ -65,13 +113,18 @@
   function homeView() {
     const today = isoDate();
     const cards = state.logbooks.map(lb => {
-      const dates = new Set(entriesOf(lb.id).map(e => e.date));
-      const done = dates.has(today);
+      const byDate = new Map(entriesOf(lb.id).map(e => [e.date, e]));
+      const done = byDate.has(today);
       const n = streak(lb.id);
+      const big = !!summaryQ(lb);
       const dots = [];
       for (let i = 6; i >= 0; i--) {
         const d = addDays(today, -i);
-        dots.push(`<span class="dot${dates.has(d) ? ' on' : ''}${i === 0 ? ' today' : ''}" title="${esc(fmtFull(d))}"></span>`);
+        const e = byDate.get(d);
+        const m = entryMark(lb, e);
+        const cls = ['dot', e && 'on', m && 'marked ' + markClass(m), i === 0 && 'today'].filter(Boolean).join(' ');
+        const label = m && graphemes(m.text).length === 1 ? esc(m.text) : '';
+        dots.push(`<span class="${cls}" title="${esc(fmtFull(d))}">${label}</span>`);
       }
       return `
         <article class="card lb-card${done ? ' done' : ''}">
@@ -84,7 +137,7 @@
             <span class="lb-streak" title="Tage in Folge">${n > 0 ? '🔥 ' + n : ''}</span>
           </a>
           <div class="lb-foot">
-            <div class="dots" aria-label="Letzte 7 Tage">${dots.join('')}</div>
+            <div class="dots${big ? ' big' : ''}" aria-label="Letzte 7 Tage">${dots.join('')}</div>
             <nav>
               <a href="#/history/${lb.id}">Verlauf</a>
               <a href="#/edit/${lb.id}">Anpassen</a>
@@ -109,6 +162,12 @@
     let input;
     if (q.type === 'text') {
       input = `<textarea rows="1" placeholder="${esc(q.hint || '…')}" aria-label="${esc(q.title)}">${esc(value || '')}</textarea>`;
+    } else if (q.type === 'summary') {
+      const cur = markOf(q, value);
+      input = `<div class="chips marks">${(q.marks || []).map(m => {
+        const on = !!cur && cur.text === m.text && cur.color === colorKey(m.color);
+        return `<button type="button" class="chip mark-chip" data-action="pick" data-text="${esc(m.text)}" data-color="${esc(colorKey(m.color))}" aria-pressed="${on}" aria-label="${esc(m.text || colorName(m.color))}">${markHtml(m)}</button>`;
+      }).join('')}</div>`;
     } else {
       const selected = Array.isArray(value) ? value : (value ? [value] : []);
       input = `<div class="chips">${q.options.map(o =>
@@ -149,6 +208,9 @@
       const type = el.dataset.type;
       if (type === 'text') {
         answers[el.dataset.question] = el.querySelector('textarea').value.trim();
+      } else if (type === 'summary') {
+        const c = el.querySelector('.chip[aria-pressed="true"]');
+        answers[el.dataset.question] = c ? { text: c.dataset.text, color: c.dataset.color } : '';
       } else {
         const picked = [...el.querySelectorAll('.chip[aria-pressed="true"]')].map(c => c.dataset.value);
         answers[el.dataset.question] = type === 'multi' ? picked : (picked[0] || '');
@@ -233,7 +295,8 @@
   function entryCard(lb, e) {
     const rows = lb.questions.filter(q => hasAnswer(e.answers[q.id])).map(q => {
       const v = e.answers[q.id];
-      return `<dt>${esc(q.title)}</dt><dd>${esc(Array.isArray(v) ? v.join(', ') : v)}</dd>`;
+      const m = q.type === 'summary' && markOf(q, v);
+      return `<dt>${esc(q.title)}</dt><dd>${m ? markHtml(m, 'sm') : esc(answerText(q, v))}</dd>`;
     }).join('');
     return `
       <article class="card entry">
@@ -301,10 +364,12 @@
       const date = `${month}-${pad(d)}`;
       const has = byDate.has(date);
       if (has) count++;
-      const cls = ['cal-day', has && 'on', date === today && 'today', date === selected && 'sel'].filter(Boolean).join(' ');
+      const m = entryMark(lb, byDate.get(date));
+      const cls = ['cal-day', has && 'on', m && 'marked ' + markClass(m), date === today && 'today', date === selected && 'sel'].filter(Boolean).join(' ');
+      const inner = m ? `<span class="cal-num">${d}</span>${m.text ? `<span class="cal-mark">${esc(m.text)}</span>` : ''}` : d;
       cells.push(date > today
         ? `<span class="${cls} future">${d}</span>`
-        : `<a class="${cls}" href="#/history/${lb.id}/${date}" aria-label="${esc(fmtFull(date))}${has ? ', eingetragen' : ''}">${d}</a>`);
+        : `<a class="${cls}" href="#/history/${lb.id}/${date}" aria-label="${esc(fmtFull(date))}${has ? ', eingetragen' : ''}${m ? ': ' + esc(answerText(summaryQ(lb), byDate.get(date).answers[summaryQ(lb).id])) : ''}">${inner}</a>`);
     }
 
     const title = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
@@ -333,7 +398,7 @@
             ? `<a class="icon cal-nav" href="#/history/${lb.id}/${next}" aria-label="Nächster Monat">›</a>`
             : '<span class="icon cal-nav disabled" aria-hidden="true">›</span>'}
         </div>
-        <div class="cal-grid">
+        <div class="cal-grid${summaryQ(lb) ? ' squares' : ''}">
           ${WEEKDAYS.map(w => `<span class="cal-wd">${w}</span>`).join('')}
           ${cells.join('')}
         </div>
@@ -343,7 +408,35 @@
 
   // ---------- Editor ----------
 
-  const TYPE_LABELS = { text: 'Freitext', choice: 'Auswahl (eine Antwort)', multi: 'Auswahl (mehrere Antworten)' };
+  const TYPE_LABELS = {
+    text: 'Freitext',
+    choice: 'Auswahl (eine Antwort)',
+    multi: 'Auswahl (mehrere Antworten)',
+    summary: 'Tagesfazit (Zeichen & Farbe im Kalender)',
+  };
+  const DEFAULT_MARKS = [
+    { text: '😞', color: 'red' }, { text: '😐', color: 'yellow' }, { text: '🙂', color: 'teal' }, { text: '😄', color: 'green' },
+  ];
+
+  function marksEditHtml(q) {
+    q.marks = q.marks || [];
+    const palette = [{ key: '', name: 'Keine Farbe' }, ...COLORS];
+    return `
+      <div class="opts">
+        <span class="label">Auswahlmöglichkeiten</span>
+        <p class="hint">Je 1–3 Zeichen (Emoji, Buchstabe, Zahl) und eine Farbe – oder nur eine Farbe.
+          Die gewählte Antwort erscheint im Kalender und in der Wochenübersicht.</p>
+        ${q.marks.map((m, j) => `
+          <div class="mark-edit">
+            <input type="text" class="mark mark-input ${markClass(m)}" data-mi="${j}" value="${esc(m.text)}" autocomplete="off" aria-label="Zeichen ${j + 1}">
+            <div class="swatches" role="group" aria-label="Farbe">
+              ${palette.map(c => `<button type="button" class="swatch c-${c.key || 'none'}" data-action="mark-color" data-mi="${j}" data-color="${c.key}" aria-pressed="${colorKey(m.color) === c.key}" title="${c.name}" aria-label="${c.name}"></button>`).join('')}
+            </div>
+            <button class="icon danger" data-action="mark-remove" data-mi="${j}" title="Entfernen">✕</button>
+          </div>`).join('')}
+        <button class="link" data-action="mark-add">+ Auswahlmöglichkeit</button>
+      </div>`;
+  }
 
   function newView() {
     return `
@@ -377,10 +470,13 @@
         <label>Hinweis (optional)<input type="text" data-qf="hint" value="${esc(q.hint)}"></label>
         <label>Antwortart
           <select data-qf="type">
-            ${Object.keys(TYPE_LABELS).map(t => `<option value="${t}" ${q.type === t ? 'selected' : ''}>${TYPE_LABELS[t]}</option>`).join('')}
+            ${Object.keys(TYPE_LABELS).map(t => {
+              const taken = t === 'summary' && d.questions.some((x, k) => k !== i && x.type === 'summary');
+              return `<option value="${t}" ${q.type === t ? 'selected' : ''} ${taken ? 'disabled' : ''}>${TYPE_LABELS[t]}${taken ? ' – schon vergeben' : ''}</option>`;
+            }).join('')}
           </select>
         </label>
-        ${q.type === 'text' ? '' : `
+        ${q.type === 'text' ? '' : q.type === 'summary' ? marksEditHtml(q) : `
           <div class="opts">
             <span class="label">Auswahlmöglichkeiten</span>
             ${q.options.map((o, j) => `
@@ -456,12 +552,22 @@
     d.questions.forEach(q => {
       q.title = q.title.trim();
       q.hint = q.hint.trim();
-      q.options = q.type === 'text' ? [] : [...new Set(q.options.map(o => o.trim()).filter(Boolean))];
+      q.options = q.type === 'choice' || q.type === 'multi' ? [...new Set(q.options.map(o => o.trim()).filter(Boolean))] : [];
+      if (q.type === 'summary') {
+        const seen = new Set();
+        q.marks = (q.marks || [])
+          .map(m => ({ text: clampMark(m.text), color: colorKey(m.color) }))
+          .filter(m => (m.text || m.color) && !seen.has(m.text + '|' + m.color) && seen.add(m.text + '|' + m.color));
+      } else delete q.marks;
     });
     if (!d.questions.length) return toast('Füge mindestens eine Frage hinzu.');
     if (d.questions.some(q => !q.title)) return toast('Jede Frage braucht einen Text.');
-    if (d.questions.some(q => q.type !== 'text' && q.options.length < 2)) {
+    if (d.questions.some(q => (q.type === 'choice' || q.type === 'multi') && q.options.length < 2)) {
       return toast('Auswahlfragen brauchen mindestens zwei Möglichkeiten.');
+    }
+    if (d.questions.filter(q => q.type === 'summary').length > 1) return toast('Es gibt nur ein Tagesfazit pro Logbuch.');
+    if (d.questions.some(q => q.type === 'summary' && q.marks.length < 2)) {
+      return toast('Das Tagesfazit braucht mindestens zwei Möglichkeiten.');
     }
     d.updatedAt = new Date().toISOString();
     await Store.put('logbooks', d);
@@ -509,10 +615,7 @@
     const cell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const rows = [['Datum', ...lb.questions.map(q => q.title)]];
     entriesOf(id).sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-      rows.push([e.date, ...lb.questions.map(q => {
-        const v = e.answers[q.id];
-        return Array.isArray(v) ? v.join(', ') : v;
-      })]);
+      rows.push([e.date, ...lb.questions.map(q => answerText(q, e.answers[q.id]))]);
     });
     const csv = '﻿' + rows.map(r => r.map(cell).join(';')).join('\r\n');
     const name = lb.name.replace(/[^\wäöüÄÖÜß-]+/g, '_');
@@ -588,7 +691,7 @@
 
     switch (action) {
       case 'pick': {
-        const single = el.closest('[data-question]').dataset.type === 'choice';
+        const single = el.closest('[data-question]').dataset.type !== 'multi';
         const on = el.getAttribute('aria-pressed') === 'true';
         if (single) el.parentElement.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
         el.setAttribute('aria-pressed', String(!on));
@@ -629,6 +732,12 @@
       case 'q-down': qs.splice(qi + 1, 0, qs.splice(qi, 1)[0]); rerenderEditor(); break;
       case 'opt-add': qs[qi].options.push(''); rerenderEditor(); break;
       case 'opt-remove': qs[qi].options.splice(Number(el.dataset.oi), 1); rerenderEditor(); break;
+      case 'mark-add':
+        qs[qi].marks.push({ text: '', color: COLORS[qs[qi].marks.length % COLORS.length].key });
+        rerenderEditor();
+        break;
+      case 'mark-remove': qs[qi].marks.splice(Number(el.dataset.mi), 1); rerenderEditor(); break;
+      case 'mark-color': qs[qi].marks[Number(el.dataset.mi)].color = el.dataset.color; rerenderEditor(); break;
       case 'preview-animation':
         if (busy) return;
         busy = true;
@@ -674,6 +783,13 @@
     if (el.dataset.f) editorDraft[el.dataset.f] = el.value;
     else if (qEl && el.dataset.qf && el.dataset.qf !== 'type') editorDraft.questions[qEl.dataset.qi][el.dataset.qf] = el.value;
     else if (qEl && el.dataset.oi) editorDraft.questions[qEl.dataset.qi].options[el.dataset.oi] = el.value;
+    else if (qEl && el.dataset.mi) {
+      const m = editorDraft.questions[qEl.dataset.qi].marks[el.dataset.mi];
+      const v = clampMark(el.value);
+      if (v !== el.value) el.value = v;
+      m.text = v;
+      el.className = `mark mark-input ${markClass(m)}`;
+    }
   });
 
   app.addEventListener('change', ev => {
@@ -684,7 +800,18 @@
     if (editorDraft && el.dataset.qf === 'type') {
       const q = editorDraft.questions[el.closest('[data-qi]').dataset.qi];
       q.type = el.value;
-      if (q.type !== 'text' && !q.options.length) q.options = ['🙂 Gut', '😐 Mittel', '😞 Schlecht'];
+      q.options = q.options || [];
+      if (q.type === 'summary' && !(q.marks && q.marks.length)) {
+        // Aus einer Auswahlfrage wird das erste Wort jeder Möglichkeit (meist das Emoji) übernommen.
+        const opts = q.options.map(o => clampMark(o.trim().split(/\s+/)[0])).filter(Boolean);
+        q.marks = opts.length >= 2
+          ? opts.map((text, k) => ({ text, color: autoColor(k, opts.length) }))
+          : DEFAULT_MARKS.map(m => ({ ...m }));
+      }
+      if ((q.type === 'choice' || q.type === 'multi') && !q.options.length) {
+        const fromMarks = (q.marks || []).map(m => m.text).filter(Boolean);
+        q.options = fromMarks.length >= 2 ? fromMarks : ['🙂 Gut', '😐 Mittel', '😞 Schlecht'];
+      }
       rerenderEditor();
     }
   });

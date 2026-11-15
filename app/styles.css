@@ -106,6 +106,31 @@ a { color: var(--blue); text-decoration: none; }
 .dot.on { background: var(--accent); }
 .dot.today { outline: 2px solid var(--muted); outline-offset: 2px; }
 .dot.today.on { outline-color: var(--accent); }
+.dots.big { gap: 5px; }
+.dots.big .dot { width: 22px; height: 22px; display: grid; place-items: center; font-size: 0.78rem; line-height: 1; }
+.dots.big .dot.today { outline-offset: 1px; }
+.dot.marked { background: var(--mark); color: var(--mark-ink); }
+
+/* Tagesfazit: Farben (Hintergrund + Schrift) */
+.c-none   { --mark: var(--surface-2); --mark-ink: var(--text); }
+.c-red    { --mark: #e5484d; --mark-ink: #fff; }
+.c-orange { --mark: #f2762e; --mark-ink: #fff; }
+.c-yellow { --mark: #f5c518; --mark-ink: #2a2000; }
+.c-green  { --mark: #3fa45b; --mark-ink: #fff; }
+.c-teal   { --mark: #14a595; --mark-ink: #fff; }
+.c-blue   { --mark: #3e6ee0; --mark-ink: #fff; }
+.c-violet { --mark: #8e4ec6; --mark-ink: #fff; }
+.c-pink   { --mark: #d6409f; --mark-ink: #fff; }
+.c-grey   { --mark: #8b8d98; --mark-ink: #fff; }
+.mark {
+  display: inline-grid; place-items: center; width: 46px; height: 46px; border-radius: 12px;
+  background: var(--mark); color: var(--mark-ink); font-size: 1.4rem; font-weight: 700; line-height: 1;
+}
+.mark.len-2 { font-size: 1.05rem; }
+.mark.len-3 { font-size: 0.82rem; }
+.mark.sm { width: 32px; height: 32px; border-radius: 9px; font-size: 1.05rem; }
+.mark.sm.len-2 { font-size: 0.8rem; }
+.mark.sm.len-3 { font-size: 0.64rem; }
 
 /* Formularelemente */
 label, .label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
@@ -160,6 +185,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer;
 }
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.marks { gap: 6px; }
+.chip.mark-chip { padding: 3px; border-radius: 16px; background: transparent; border: 2px solid transparent; transition: opacity 0.15s; }
+.chip.mark-chip[aria-pressed="true"] { background: transparent; border-color: var(--text); }
+.marks:has([aria-pressed="true"]) .mark-chip:not([aria-pressed="true"]) { opacity: 0.45; }
 .dissolving {
   opacity: 0; filter: blur(8px); transform: translateY(-14px) scale(0.98);
   transition: opacity 0.7s ease, filter 0.7s ease, transform 0.7s ease;
@@ -209,6 +238,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .cal-day.today.on { border-color: var(--text); }
 .cal-day.sel { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--blue); }
 a.cal-day:not(.on):hover { background: var(--surface-2); }
+/* Kalender mit Tagesfazit: Kacheln, Tag oben rechts, Zeichen mittig */
+.cal-grid.squares .cal-day { border-radius: 10px; position: relative; container-type: inline-size; }
+.cal-day.marked { background: var(--mark); color: var(--mark-ink); }
+.cal-num {
+  position: absolute; top: 3px; right: 5px; line-height: 1; font-weight: 600; opacity: 0.85;
+  font-size: 0.62rem; font-size: clamp(0.58rem, 19cqw, 0.8rem);
+}
+.cal-mark { line-height: 1; font-weight: 700; margin-top: 10%; font-size: 1.3rem; font-size: 50cqw; }
+.cal-day.len-2 .cal-mark { font-size: 0.95rem; font-size: 33cqw; }
+.cal-day.len-3 .cal-mark { font-size: 0.72rem; font-size: 24cqw; }
 .cal-help { text-align: center; }
 
 /* Erinnerung */
@@ -236,6 +275,19 @@ input[type="time"] { width: 100%; font: inherit; color: var(--text); background:
 .num { font-weight: 600; }
 .opts { display: flex; flex-direction: column; gap: 8px; }
 .opt { display: flex; gap: 8px; align-items: center; }
+.mark-edit { display: flex; gap: 8px; align-items: center; }
+input.mark-input { flex: none; width: 46px; padding: 0; text-align: center; font-size: 1.3rem; font-weight: 700; border-color: transparent; background: var(--mark); color: var(--mark-ink); }
+input.mark-input.len-2 { font-size: 1.02rem; }
+input.mark-input.len-3 { font-size: 0.8rem; }
+input.mark-input.c-none { background: var(--surface-2); border-color: var(--line); }
+.swatches { flex: 1; display: grid; grid-template-columns: repeat(5, 24px); gap: 6px; }
+@media (min-width: 460px) { .swatches { grid-template-columns: repeat(10, 22px); gap: 5px; } }
+.swatch {
+  width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  background: var(--mark); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.swatch.c-none { background: linear-gradient(135deg, transparent 44%, var(--muted) 44% 56%, transparent 56%), var(--surface-2); }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
 
 /* Hinweis-Einblendung */
 #toast {

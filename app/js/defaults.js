@@ -13,7 +13,8 @@ const Templates = (() => {
       animation: 'rocket',
       reminder: { enabled: true, days: [1, 2, 3, 4, 5], time: '17:30' },
       questions: [
-        { title: 'Wie war dein Tag?', hint: '', type: 'choice', options: ['😞 Schlecht', '😐 Mittel', '🙂 Gut', '😄 Super'] },
+        { title: 'Wie war dein Tag?', hint: '', type: 'summary', marks: [
+          { text: '😞', color: 'red' }, { text: '😐', color: 'yellow' }, { text: '🙂', color: 'teal' }, { text: '😄', color: 'green' }] },
         { title: 'Was ist heute passiert?', hint: 'Lass den Tag in 2–3 kurzen Stichpunkten Revue passieren.', type: 'text' },
         { title: 'Was ist heute schlecht gelaufen?', hint: 'Lass Frust raus und analysiere Fehler – damit sie im Büro bleiben.', type: 'text' },
         { title: 'Was ist heute gut gelaufen?', hint: 'Richte den Blick auf Erfolge, auch auf die kleinen.', type: 'text' },
@@ -32,7 +33,8 @@ const Templates = (() => {
       reminder: { enabled: true, days: [1, 2, 3, 4, 5, 6, 7], time: '19:00' },
       questions: [
         { title: 'Was habe ich heute gegessen?', hint: 'Frühstück, Mittag, Abend, Snacks – Stichpunkte reichen.', type: 'text' },
-        { title: 'Wie geht es mir heute?', hint: '', type: 'choice', options: ['😞 Schlecht', '😐 Mittel', '🙂 Gut', '😄 Sehr gut'] },
+        { title: 'Wie geht es mir heute?', hint: '', type: 'summary', marks: [
+          { text: '😞', color: 'red' }, { text: '😐', color: 'yellow' }, { text: '🙂', color: 'teal' }, { text: '😄', color: 'green' }] },
         { title: 'Hatte ich Beschwerden?', hint: 'Mehrere möglich.', type: 'multi', options: ['Keine', 'Kopf', 'Magen / Darm', 'Rücken', 'Gelenke', 'Haut', 'Müdigkeit'] },
         { title: 'Sonst noch etwas aufgefallen?', hint: '', type: 'text' },
       ],
@@ -66,6 +68,7 @@ const Templates = (() => {
         hint: q.hint || '',
         type: q.type,
         options: q.options ? q.options.slice() : [],
+        ...(q.marks ? { marks: q.marks.map(m => ({ ...m })) } : {}),
       })),
       createdAt: now,
       updatedAt: now,
