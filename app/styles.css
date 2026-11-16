@@ -110,6 +110,9 @@ a { color: var(--blue); text-decoration: none; }
 .dots.big .dot { width: 22px; height: 22px; display: grid; place-items: center; font-size: 0.78rem; line-height: 1; }
 .dots.big .dot.today { outline-offset: 1px; }
 .dot.marked { background: var(--mark); color: var(--mark-ink); }
+/* Ruhetag (bei der Erinnerung abgewählt): kein Loch in der Serie, nur ein kurzer Strich */
+.dot.rest { background: transparent; display: grid; place-items: center; }
+.dot.rest::after { content: ""; width: 70%; height: 2px; border-radius: 1px; background: var(--muted); opacity: 0.6; }
 
 /* Tagesfazit: Farben (Hintergrund + Schrift) */
 .c-none   { --mark: var(--surface-2); --mark-ink: var(--text); }

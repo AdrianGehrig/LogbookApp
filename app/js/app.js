@@ -82,12 +82,27 @@
   const logbook = id => state.logbooks.find(l => l.id === id);
   const entriesOf = id => state.entries.filter(e => e.logbookId === id);
 
+  // Ruhetage: Wochentage, die bei einer aktiven Erinnerung abgewählt sind. Ohne Erinnerung zählt jeder Tag.
+  const weekday = iso => (parseDate(iso).getDay() + 6) % 7 + 1;   // Mo = 1 … So = 7
+  function isRestDay(lb, iso) {
+    const r = lb && lb.reminder;
+    if (!r || !r.enabled || !Array.isArray(r.days) || !r.days.length) return false;
+    return !r.days.includes(weekday(iso));
+  }
+
+  // Serie: Einträge an aufeinanderfolgenden Tagen; Ruhetage ohne Eintrag unterbrechen sie nicht,
+  // ein Eintrag an einem Ruhetag zählt trotzdem mit.
   function streak(id) {
+    const lb = logbook(id);
     const dates = new Set(entriesOf(id).map(e => e.date));
     let day = isoDate();
     if (!dates.has(day)) day = addDays(day, -1);
     let n = 0;
-    while (dates.has(day)) { n++; day = addDays(day, -1); }
+    for (let guard = 0; guard < 4000; guard++) {
+      if (dates.has(day)) n++;
+      else if (!isRestDay(lb, day)) break;
+      day = addDays(day, -1);
+    }
     return n;
   }
 
@@ -122,9 +137,10 @@
         const d = addDays(today, -i);
         const e = byDate.get(d);
         const m = entryMark(lb, e);
-        const cls = ['dot', e && 'on', m && 'marked ' + markClass(m), i === 0 && 'today'].filter(Boolean).join(' ');
+        const rest = !e && isRestDay(lb, d);
+        const cls = ['dot', e && 'on', rest && 'rest', m && 'marked ' + markClass(m), i === 0 && 'today'].filter(Boolean).join(' ');
         const label = m && graphemes(m.text).length === 1 ? esc(m.text) : '';
-        dots.push(`<span class="${cls}" title="${esc(fmtFull(d))}">${label}</span>`);
+        dots.push(`<span class="${cls}" title="${esc(fmtFull(d))}${rest ? ' · Pause' : ''}">${label}</span>`);
       }
       return `
         <article class="card lb-card${done ? ' done' : ''}">

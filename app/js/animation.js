@@ -152,9 +152,12 @@ const Celebrate = (() => {
   // Fuchsschecke: rotbraune Grundfarbe mit weißen Flecken.
 
   const HORSE_W = 160, HORSE_H = 130;
+  // Rand rundum, damit der gehobene Schweif innerhalb der Zeichenfläche liegt. Safari (iOS) schneidet
+  // SVG-Inhalt außerhalb der viewBox trotz overflow: visible ab, sobald das Element animiert wird.
+  const PAD = 40;
   const FOX = '#b4532a', FOX_DARK = '#8c3f1f', WHITE = '#fbf6ea', HOOF = '#3b2a1d';
   const HORSE_SVG = `
-    <svg viewBox="0 0 160 130" width="${HORSE_W}" height="${HORSE_H}" aria-hidden="true">
+    <svg viewBox="${-PAD} ${-PAD} ${HORSE_W + 2 * PAD} ${HORSE_H + 2 * PAD}" width="${HORSE_W + 2 * PAD}" height="${HORSE_H + 2 * PAD}" aria-hidden="true">
       <defs><clipPath id="horse-body"><ellipse cx="70" cy="66" rx="43" ry="26"/></clipPath></defs>
       <g class="tail"><path d="M33 50 C13 46 3 74 11 104 C23 100 31 82 39 62 Z" fill="${WHITE}"/></g>
       <g class="leg leg-a"><rect x="38" y="76" width="12" height="36" rx="6" fill="${FOX_DARK}"/><rect x="37" y="106" width="14" height="9" rx="3" fill="${HOOF}"/></g>
@@ -252,7 +255,7 @@ const Celebrate = (() => {
       setClass('walking', w > 0 && w < 1);
       setClass('eating', w > 0 && eaten < total);
       setClass('tail-up', t > PUFF_AT - 0.15 && f === 0);
-      horseEl.style.transform = `translate(${hx - HORSE_W / 2}px, ${hy - HORSE_H / 2}px) rotate(${rot}deg) scale(${scale})`;
+      horseEl.style.transform = `translate(${hx - HORSE_W / 2 - PAD}px, ${hy - HORSE_H / 2 - PAD}px) rotate(${rot}deg) scale(${scale})`;
 
       const mx = hx + MOUTH.x * scale, my = hy + MOUTH.y * scale;
       const onScreen = t > ENTER;
